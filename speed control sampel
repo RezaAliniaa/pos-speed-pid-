@@ -1,0 +1,111 @@
+#include <PID_v1.h>   
+// Thanks to Brett Beauregard for his nice PID library http://brettbeauregard.com/blog/2011/04/improving-the-beginners-pid-introduction/
+#define encodPinA1      34                             // Quadrature encoder A pin
+#define encodPinB1      35
+
+//
+//#define M1 26                             // PWM outputs to L298N H-Bridge motor driver module
+//#define M2 27
+//#define Pwm_mot 12
+
+const int freq = 20000;
+const int pwmChannel = 0;
+const int resolution = 8;
+
+#define MOTOR_pin1  26
+#define MOTOR_pin2 27
+#define MOTOR_pwm 12
+
+
+
+
+double kp = 5 , ki = 1 , kd = 0.01 ,input = 0, output = 0, setpoint = 0;   // modify kp, ki and kd for optimal performance
+long temp;
+int motor_pwm_value =0;
+volatile long encoderPos = 0;
+PID myPID(&input, &output, &setpoint, kp, ki, kd, DIRECT);  // if motor will only run at full speed try 'REVERSE' instead of 'DIRECT'
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(encodPinA1, INPUT_PULLUP);                  // quadrature encoder input A
+  pinMode(encodPinB1, INPUT_PULLUP);  
+  pinMode(MOTOR_pin1, OUTPUT); 
+  pinMode(MOTOR_pin2, OUTPUT);
+  pinMode (MOTOR_pwm,OUTPUT); 
+
+  digitalWrite(MOTOR_pwm,LOW);
+  digitalWrite(MOTOR_pwm,LOW);
+  digitalWrite(MOTOR_pwm,LOW);
+
+  
+  attachInterrupt(digitalPinToInterrupt(encodPinA1),encoder, RISING);
+//  TCCR1B = TCCR1B & 0b11111000 | 1;                   // set 31KHz PWM to prevent motor noise
+  myPID.SetMode(AUTOMATIC);
+  myPID.SetSampleTime(1);
+  myPID.SetOutputLimits(-255, 256);
+
+  ledcSetup(pwmChannel, freq, resolution); 
+  ledcAttachPin(MOTOR_pwm, 0); //(enable1Pin, pwmChannel)
+}
+void loop() {
+  temp += 10;                              // increment position target with potentiometer value (speed), potmeter connected to A0
+  if (temp < 0) {                                     // in case of overflow
+    encoderPos = 0;
+    temp = 0;
+  }
+  setpoint = temp/500;                              // modify division to fit motor and encoder characteristics
+  input = encoderPos/6 ;                                // data from encoder
+  myPID.Compute();                                    // calculate new output
+
+ Serial.print("setpoint:");
+ Serial.println(setpoint);
+
+ Serial.print("encoderPos :");
+ Serial.println(encoderPos/6);
+
+//Serial.print("    ");
+ Serial.print("output is :");
+ Serial.println(output);
+// Serial.println();
+ motor_pwm_value = output;
+
+ if (motor_pwm_value > 0) // if the motor_pwm_value is greater than zero we rotate the  motor in clockwise direction
+    motor_ccw(motor_pwm_value);
+  else // else we move it in a counter clockwise direction
+    motor_cw(abs(motor_pwm_value));
+}
+
+void encoder() {
+  if (digitalRead(encodPinB1) == HIGH) // if ENCODER_B is high increase the count
+    encoderPos++; // increment the count
+  else // else decrease the count
+    encoderPos--;  // decrement the count
+}
+
+void motor_cw(int power) {
+  
+  if (power > 1) {
+    ledcWrite(pwmChannel, power);   
+    // analogWrite(MOTOR_CW, power); //rotate the motor if the value is grater than 100
+    digitalWrite(MOTOR_pin1, HIGH);
+    digitalWrite(MOTOR_pin2, LOW);
+     
+  }
+  else {
+    // both of the pins are set to low    
+    digitalWrite(MOTOR_pin1, LOW);
+    digitalWrite(MOTOR_pin2, LOW);
+  }
+}
+
+void motor_ccw(int power) {
+  if (power > 1) {
+    ledcWrite(pwmChannel, power);
+    digitalWrite(MOTOR_pin1, LOW);
+    digitalWrite(MOTOR_pin2, HIGH);
+  }
+  else {
+    digitalWrite(MOTOR_pin1, LOW);
+    digitalWrite(MOTOR_pin2, LOW);
+  }
+}
